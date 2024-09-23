@@ -1,7 +1,10 @@
 from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS, cross_origin
+
 
 app = Flask(__name__)
+cors = CORS(app)
 
 # Set up SQLite database
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.db'
