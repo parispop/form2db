@@ -1,59 +1,47 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
-import os
-import boto3
 
 app = Flask(__name__)
 
-# Configure SQLAlchemy for storing user data
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+# Set up SQLite database
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.db'
 db = SQLAlchemy(app)
 
-# AWS S3 configuration
-s3 = boto3.client('s3', region_name='us-east-1')
-BUCKET_NAME = 'your-bucket-name'
-
-# Database model for user
+# Define database model
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), nullable=False)
+    chat_id = db.Column(db.String(100), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    file_url = db.Column(db.String(200), nullable=False)
+    stored_url = db.Column(db.String(300), nullable=False)
 
-# Initialize database
+# Create database
 @app.before_first_request
 def create_tables():
     db.create_all()
 
-# Endpoint for file upload and data storage
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    username = request.form['username']
-    email = request.form['email']
-    file = request.files['file']
+# API endpoint to store data
+@app.route('/api/store', methods=['POST'])
+def store_data():
+    data = request.json
+    user = User(chat_id=data['ChatID'], name=data['Name'], email=data['Email'], stored_url=data['storedURL'])
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'message': 'Data stored successfully'}), 201
 
-    if file and email:
-        # Save file locally and upload to S3
-        filename = file.filename
-        file.save(os.path.join('uploads', filename))
-        s3.upload_file(os.path.join('uploads', filename), BUCKET_NAME, filename)
-
-        # Store user data in DB with S3 file URL
-        file_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{filename}"
-        new_user = User(username=username, email=email, file_url=file_url)
-        db.session.add(new_user)
-        db.session.commit()
-
-        return jsonify({'message': 'File uploaded and user data saved', 'file_url': file_url}), 200
-    return jsonify({'error': 'Invalid request'}), 400
-
-# Endpoint to retrieve file using email as query filter
-@app.route('/files/<email>', methods=['GET'])
-def get_file(email):
+# API endpoint to get storedURL by email
+@app.route('/api/retrieve', methods=['GET'])
+def retrieve_url():
+    email = request.args.get('email')
     user = User.query.filter_by(email=email).first()
     if user:
-        return jsonify({'file_url': user.file_url}), 200
+        return jsonify({'storedURL': user.stored_url}), 200
     return jsonify({'error': 'User not found'}), 404
 
-if __name__ == "__main__":
+# Serve the HTML form
+@app.route('/')
+def form():
+    return render_template('upload_form.html')
+
+if __name__ == '__main__':
     app.run(debug=True)
